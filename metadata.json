@@ -1,0 +1,7 @@
+{
+  "name": "Merry Christmas Interactive",
+  "description": "An interactive 3D Christmas experience with hand tracking and audio visualization.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
