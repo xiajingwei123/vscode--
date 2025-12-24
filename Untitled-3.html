@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merry Christmas To TangLiang</title>
+  <!-- 引入 MediaPipe 库 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: #050505;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #c5a880;
+    }
+
+    #three-canvas {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 隐藏摄像头画面，只用于捕捉 */
+    .input_video {
+      display: none;
+    }
+
+    #start-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 1s ease;
+    }
+
+    .modal-content {
+      background: linear-gradient(145deg, #1a1a1a, #2a2a2a);
+      padding: 40px;
+      border-radius: 20px;
+      border: 2px solid #c5a880;
+      box-shadow: 0 0 30px rgba(197, 168, 128, 0.3);
+      text-align: center;
+      max-width: 90%;
+      width: 400px;
+    }
+
+    .modal-title {
+      font-size: 2rem;
+      color: #c5a880;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+
+    .modal-text {
+      font-size: 1.1rem;
+      color: #ccc;
+      margin-bottom: 30px;
+    }
+
+    .btn-group {
+      display: flex;
+      justify-content: space-around;
+      gap: 20px;
+      position: relative;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 50px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: bold;
+      outline: none;
+    }
+
+    .btn-accept {
+      background: linear-gradient(45deg, #d4af37, #c5a880);
+      color: #000;
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+    }
+
+    .btn-accept:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 25px rgba(212, 175, 55, 0.8);
+    }
+
+    .btn-reject {
+      background: #333;
+      color: #888;
+      border: 1px solid #555;
+    }
+
+    #christmas-text {
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Brush Script MT', cursive;
+      font-size: 3rem; 
+      background: linear-gradient(to bottom, #fff, #c5a880);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 20px rgba(197, 168, 128, 0.5);
+      z-index: 10;
+      opacity: 0;
+      pointer-events: none;
+      text-align: center;
+      width: 100%;
+      white-space: nowrap; 
+    }
+
+    .fade-in {
+      animation: fadeInText 3s forwards ease-in-out;
+      animation-delay: 1s;
+    }
+
+    @keyframes fadeInText {
+      0% { opacity: 0; transform: translate(-50%, -30%); }
+      100% { opacity: 1; transform: translate(-50%, -50%); }
+    }
+
+    .loading {
+      color: white;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 100;
+    }
+    
+    /* 右下角手势提示样式 */
+    .gesture-guide {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      z-index: 50;
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(197, 168, 128, 0.9);
+      text-align: right;
+      pointer-events: none;
+      text-shadow: 0 0 8px rgba(0,0,0,0.8);
+      font-family: "Microsoft YaHei", sans-serif;
+      animation: guideFadeIn 2s ease-out 2s forwards;
+      opacity: 0;
+    }
+
+    .gesture-item {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    
+    .gesture-icon {
+      font-size: 18px;
+    }
+
+    @keyframes guideFadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 600px) {
+      .modal-content { width: 90%; padding: 20px; }
+      .modal-title { font-size: 1.5rem; }
+      #christmas-text { font-size: 1.8rem; top: 12%; white-space: normal; line-height: 1.2; }
+      .gesture-guide { bottom: 20px; right: 20px; font-size: 12px; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 摄像头视频流容器 -->
+  <video class="input_video"></video>
+
+  <div class="loading">加载中...</div>
+  <canvas id="three-canvas"></canvas>
+  
+  <!-- 手势提示 UI -->
+  <div class="gesture-guide" id="gesture-guide">
+    <div class="gesture-item"><span>✋ 散开·漫天星河</span></div>
+    <div class="gesture-item"><span>✌️ 凝聚·爱心</span></div>
+    <div class="gesture-item"><span>✊ 还原·圣诞树</span></div>
+  </div>
+
+  <div id="start-modal">
+    <div class="modal-content">
+      <div class="modal-title">🎁 圣诞礼物</div>
+      <p class="modal-text">叮咚！TangLiang你有一份来自圣诞老人的专属礼物，是否查收？</p>
+      <div class="btn-group" id="btn-container">
+        <button class="btn btn-reject" id="btn-no">俺不中嘞，点右边</button>
+        <button class="btn btn-accept" id="btn-yes">哦豁，开心收下</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="christmas-text">Merry Christmas To You~</div>
+  
+  <audio id="christmas-music" loop>
+    <source src="https://music.163.com/song/media/outer/url?id=2153919351.mp3" type="audio/mpeg">
+    您的浏览器不支持音频元素。
+  </audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.115.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+  <script>
+    // --- 交互音效系统 ---
+    const AudioFX = {
+      ctx: null,
+      gainNode: null,
+      init: function() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.gainNode = this.ctx.createGain();
+          this.gainNode.gain.value = 0.4; // 音效统一音量
+          this.gainNode.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      },
+      playTone: function(freq, type, duration, delay = 0) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + delay);
+        
+        // 音量包络，防止爆音
+        gain.gain.setValueAtTime(0, this.ctx.currentTime + delay);
+        gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + delay + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + delay + duration);
+        
+        osc.connect(gain);
+        gain.connect(this.gainNode);
+        osc.start(this.ctx.currentTime + delay);
+        osc.stop(this.ctx.currentTime + delay + duration + 0.5);
+      },
+      playScatter: function() {
+        this.init();
+        // 梦幻的风铃声/星空声
+        for(let i=0; i<8; i++) {
+          this.playTone(800 + Math.random() * 1200, 'sine', 0.8, i * 0.04);
+        }
+      },
+      playHeart: function() {
+        this.init();
+        // 温暖的和弦
+        this.playTone(261.63, 'sine', 1.5); // C4
+        this.playTone(329.63, 'sine', 1.5, 0.1); // E4
+        this.playTone(392.00, 'sine', 1.5, 0.2); // G4
+        this.playTone(523.25, 'sine', 2.0, 0.3); // C5
+      },
+      playTree: function() {
+        this.init();
+        // 聚拢的低沉音效
+        this.playTone(200, 'triangle', 0.6);
+        this.playTone(100, 'sine', 0.8, 0.1);
+      }
+    };
+
+    let threeRenderer, threeScene, threeCamera, composer;
+    
+    // 状态管理
+    let targetState = 'tree'; 
+    let currentState = { heartMix: 0, explodeMix: 0 };
+    let lastState = 'tree';
+
+    const uniforms = {
+      time: { type: "f", value: 0.0 },
+      step: { type: "f", value: 0.0 },
+      flash: { type: "f", value: 0.0 },
+      tAudioData: { value: new THREE.DataTexture(new Uint8Array(128), 64, 1, THREE.LuminanceFormat) },
+      // 变形混合因子
+      uHeartMix: { type: "f", value: 0.0 },
+      uExplodeMix: { type: "f", value: 0.0 }
+    };
+
+    const params = {
+      exposure: 1,
+      bloomStrength: 1.8,
+      bloomThreshold: 0,
+      bloomRadius: 0.6
+    };
+
+    function init() {
+      initThreeJS();
+      initHandTracking();
+      document.querySelector('.loading').style.display = 'none';
+    }
+
+    function initThreeJS() {
+      const canvas = document.getElementById('three-canvas');
+
+      threeScene = new THREE.Scene();
+      threeScene.fog = new THREE.FogExp2(0x050505, 0.002);
+
+      threeRenderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: true,
+        alpha: true
+      });
+      threeRenderer.setPixelRatio(window.devicePixelRatio);
+      threeRenderer.setSize(window.innerWidth, window.innerHeight);
+      threeRenderer.toneMapping = THREE.ReinhardToneMapping;
+      threeRenderer.outputEncoding = THREE.sRGBEncoding;
+      threeCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+      threeCamera.position.set(-0.1, -2.5, 25);
+      threeCamera.rotation.set(0.1, 0, 0);
+      
+      addPlane(threeScene, uniforms, 3000);
+      addSnow(threeScene, uniforms);
+
+      // 创建五层圣诞树
+      for (let i = 0; i < 5; i++) {
+        // 传入图层索引，用于计算位置
+        addTree(threeScene, uniforms, 4000, [0, 0, -20 * i], i);
+      }
+
+      const renderScene = new THREE.RenderPass(threeScene, threeCamera);
+      const bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.5, 0.4, 0.85
+      );
+      bloomPass.threshold = params.bloomThreshold;
+      bloomPass.strength = params.bloomStrength;
+      bloomPass.radius = params.bloomRadius;
+
+      composer = new THREE.EffectComposer(threeRenderer);
+      composer.addPass(renderScene);
+      composer.addPass(bloomPass);
+      animateThreeJS();
+    }
+
+    let step = 0;
+    let flashState = 0;
+    let flashIntensity = 0;
+    let flashStartTime = 0;
+    const flashDuration = 3000;
+    const TAU = 2 * Math.PI;
+
+    // 线性插值函数
+    function lerp(start, end, amt) {
+      return (1 - amt) * start + amt * end;
+    }
+
+    function animateThreeJS(currentTime = 0) {
+      if (!threeRenderer) return;
+      uniforms.time.value = currentTime;
+      uniforms.step.value = step;
+      flashIntensity = calculateNaturalFlash(currentTime);
+      uniforms.flash.value = flashIntensity;
+
+      // 平滑更新状态混合值
+      let tHeart = (targetState === 'heart') ? 1.0 : 0.0;
+      let tExplode = (targetState === 'explode') ? 1.0 : 0.0;
+
+      // 互斥逻辑确保过渡干净
+      if(targetState === 'heart') tExplode = 0;
+      if(targetState === 'explode') tHeart = 0;
+
+      // 调整过渡速度，散开稍微快一点
+      currentState.heartMix = lerp(currentState.heartMix, tHeart, 0.04);
+      currentState.explodeMix = lerp(currentState.explodeMix, tExplode, 0.06);
+
+      uniforms.uHeartMix.value = currentState.heartMix;
+      uniforms.uExplodeMix.value = currentState.explodeMix;
+
+      const bloomPass = composer.passes[1];
+      // 爆炸时增加光晕强度
+      let extraBloom = currentState.explodeMix * 1.5;
+      bloomPass.strength = params.bloomStrength * (0.8 + flashIntensity * 0.4) + extraBloom;
+      
+      step = (step + 1) % 1000;
+      composer.render();
+      requestAnimationFrame(animateThreeJS);
+    }
+
+    function calculateNaturalFlash(currentTime) {
+      if (flashStartTime === 0 || currentTime - flashStartTime > flashDuration) {
+        if (Math.random() > 0.5 || flashStartTime === 0) {
+          flashState = flashState === 0 ? 1 : 0;
+          flashStartTime = currentTime;
+        }
+      }
+      const progress = Math.min((currentTime - flashStartTime) / (flashDuration / 2), 1);
+      if (flashState === 0) {
+        return 1 - progress * progress;
+      } else {
+        return progress * progress;
+      }
+    }
+
+    function addTree(scene, uniforms, totalPoints, treePosition, layerIdx) {
+      const vertexShader = `
+      attribute float mIndex;
+      attribute vec3 heartPos;   // 爱心目标位置
+      attribute vec3 explodePos; // 散开目标位置
+      
+      varying vec3 vColor;
+      varying float opacity;
+      
+      uniform sampler2D tAudioData;
+      uniform float flash;
+      uniform float uHeartMix;
+      uniform float uExplodeMix;
+
+      float norm(float value, float min, float max ){
+       return (value - min) / (max - min);
+      }
+      float lerp(float norm, float min, float max){
+       return (max - min) * norm + min;
+      }
+      float map(float value, float sourceMin, float sourceMax, float destMin, float destMax){
+       return lerp(norm(value, sourceMin, sourceMax), destMin, destMax);
+      }
+      void main() {
+       vColor = color;
+       vec3 p = position;
+       
+       // 位置混合逻辑：树 -> 爱心 -> 爆炸
+       vec3 mixedPos = mix(p, heartPos, uHeartMix);
+       mixedPos = mix(mixedPos, explodePos, uExplodeMix);
+
+       vec4 mvPosition = modelViewMatrix * vec4( mixedPos, 1.0 );
+       
+       float baseSize = 1.0;
+       
+       // 视觉增强：当变形成爱心或散开时，大幅增加粒子大小，制造星空感
+       float sizeStateBoost = 1.0 + uHeartMix * 2.0 + uExplodeMix * 4.0;
+       
+       float sizeMultiplier = mix(0.8, 1.2, flash) * sizeStateBoost;
+       float sizeMapped = baseSize * sizeMultiplier;
+       
+       opacity = map(mvPosition.z , -200.0, 15.0, 0.0, 1.0);
+       
+       // 保持粒子近大远小
+       gl_PointSize = sizeMapped * ( 100.0 / -mvPosition.z );
+       gl_Position = projectionMatrix * mvPosition;
+      }
+      `;
+      const fragmentShader = `
+      varying vec3 vColor;
+      varying float opacity;
+      uniform sampler2D pointTexture;
+      uniform float flash;
+      uniform float uExplodeMix;
+
+      void main() {
+       // 爆炸时增加亮度，模拟星星闪烁
+       float brightness = mix(0.7, 1.3, flash) + uExplodeMix * 0.8;
+       vec3 color = vColor * brightness;
+
+       float dist = length(gl_PointCoord.xy - 0.5);
+       float glow = smoothstep(0.5, 0.4, dist) * 0.3;
+
+       gl_FragColor = vec4( color + glow, opacity );
+       gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+      }
+      `;
+      
+      const shaderMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          ...uniforms,
+          pointTexture: {
+            value: new THREE.TextureLoader().load(`https://assets.codepen.io/3685267/spark1.png`)
+          }
+        },
+        vertexShader,
+        fragmentShader,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        transparent: true,
+        vertexColors: true
+      });
+
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+      const colors = [];
+      const sizes = [];
+      const phases = [];
+      const mIndexs = [];
+      
+      const heartPositions = [];
+      const explodePositions = [];
+
+      const color = new THREE.Color();
+      const [px, py, pz] = treePosition; // 树的原始偏移
+
+      for (let i = 0; i < totalPoints; i++) {
+        // --- 1. 圣诞树形态 (保持原逻辑) ---
+        const t = Math.random();
+        const y = map(t, 0, 1, -8, 10);
+        const ang = map(t, 0, 1, 0, 6 * TAU) + TAU / 2 * (i % 2);
+        const [z, x] = polar(ang, map(t, 0, 1, 5, 0));
+        const modifier = map(t, 0, 1, 1, 0);
+        
+        // 计算绝对坐标，方便 morph
+        const treeX = x + rand(-0.3 * modifier, 0.3 * modifier) + px;
+        const treeY = y + rand(-0.3 * modifier, 0.3 * modifier) + py;
+        const treeZ = z + rand(-0.3 * modifier, 0.3 * modifier) + pz;
+        
+        positions.push(treeX, treeY, treeZ);
+
+        // --- 2. 爱心形态 ---
+        // 爱心公式
+        const ht = Math.random() * TAU;
+        // 调整爱心大小和位置
+        const scaleH = 0.4;
+        const hx = 16 * Math.pow(Math.sin(ht), 3) * scaleH;
+        const hy = (13 * Math.cos(ht) - 5 * Math.cos(2*ht) - 2 * Math.cos(3*ht) - Math.cos(4*ht)) * scaleH;
+        // 增加一点厚度和随机偏移
+        const hz = (Math.random() - 0.5) * 5; 
+        
+        // 让爱心浮在中间稍高处
+        heartPositions.push(hx, hy + 2, hz - 10);
+
+        // --- 3. 散开/星空形态 ---
+        // 在大球体内随机分布，模拟宇宙背景
+        const r = 60 * Math.pow(Math.random(), 0.5); // 半径大一点
+        const theta = Math.random() * TAU;
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        const ex = r * Math.sin(phi) * Math.cos(theta);
+        const ey = r * Math.sin(phi) * Math.sin(theta);
+        const ez = r * Math.cos(phi) - 20; // 稍微推远一点
+        
+        explodePositions.push(ex, ey, ez);
+
+        // --- 颜色 ---
+        const colorSeed = Math.random();
+        if (colorSeed > 0.8) {
+            color.setHex(0xff0000);
+        } else if (colorSeed > 0.5) {
+            color.setHex(0x00ff00);
+        } else {
+            color.setHSL(map(i, 0, totalPoints, 0.1, 0.2), 1.0, 0.6);
+        }
+
+        colors.push(color.r, color.g, color.b);
+        phases.push(rand(1000));
+        sizes.push(1);
+        const mIndex = map(i, 0, totalPoints, 1.0, 0.0);
+        mIndexs.push(mIndex);
+      }
+
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute("heartPos", new THREE.Float32BufferAttribute(heartPositions, 3));
+      geometry.setAttribute("explodePos", new THREE.Float32BufferAttribute(explodePositions, 3));
+      geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geometry.setAttribute("size", new THREE.Float32BufferAttribute(sizes, 1));
+      geometry.setAttribute("phase", new THREE.Float32BufferAttribute(phases, 1));
+      geometry.setAttribute("mIndex", new THREE.Float32BufferAttribute(mIndexs, 1));
+
+      const tree = new THREE.Points(geometry, shaderMaterial);
+      // 位置已经在 geometry 里加上了，这里归零
+      tree.position.set(0, 0, 0);
+      scene.add(tree);
+    }
+
+    function addSnow(scene, uniforms) {
+      const vertexShader = `
+      attribute float size;
+      attribute float phase;
+      attribute float phaseSecondary;
+      varying vec3 vColor;
+      varying float opacity;
+      uniform float time;
+      uniform float step;
+      float norm(float value, float min, float max ){ return (value - min) / (max - min); }
+      float lerp(float norm, float min, float max){ return (max - min) * norm + min; }
+      float map(float value, float sourceMin, float sourceMax, float destMin, float destMax){ return lerp(norm(value, sourceMin, sourceMax), destMin, destMax); }
+      void main() {
+       float t = time* 0.0006;
+       vColor = color;
+       vec3 p = position;
+       p.y = map(mod(phase+step, 1000.0), 0.0, 1000.0, 25.0, -8.0);
+       p.x += sin(t+phase);
+       p.z += sin(t+phaseSecondary);
+       opacity = map(p.z, -150.0, 15.0, 0.0, 1.0);
+       vec4 mvPosition = modelViewMatrix * vec4( p, 1.0 );
+       gl_PointSize = size * ( 100.0 / -mvPosition.z );
+       gl_Position = projectionMatrix * mvPosition;
+      }
+      `;
+
+      const fragmentShader = `
+      uniform sampler2D pointTexture;
+      varying vec3 vColor;
+      varying float opacity;
+      void main() {
+       gl_FragColor = vec4( vColor, opacity );
+       gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+      }
+      `;
+
+      function createSnowSet(sprite) {
+        const totalPoints = 300;
+        const shaderMaterial = new THREE.ShaderMaterial({
+          uniforms: {
+            ...uniforms,
+            pointTexture: { value: new THREE.TextureLoader().load(sprite) }
+          },
+          vertexShader,
+          fragmentShader,
+          blending: THREE.AdditiveBlending,
+          depthTest: false,
+          transparent: true,
+          vertexColors: true
+        });
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const colors = [];
+        const sizes = [];
+        const phases = [];
+        const phaseSecondaries = [];
+        const color = new THREE.Color();
+
+        for (let i = 0; i < totalPoints; i++) {
+          const [x, y, z] = [rand(25, -25), 0, rand(15, -150)];
+          positions.push(x, y, z);
+          color.setHSL(0.6, 0.1, 0.9);
+          colors.push(color.r, color.g, color.b);
+          phases.push(rand(1000));
+          phaseSecondaries.push(rand(1000));
+          sizes.push(rand(4, 2));
+        }
+
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute("size", new THREE.Float32BufferAttribute(sizes, 1));
+        geometry.setAttribute("phase", new THREE.Float32BufferAttribute(phases, 1));
+        geometry.setAttribute("phaseSecondary", new THREE.Float32BufferAttribute(phaseSecondaries, 1));
+
+        const mesh = new THREE.Points(geometry, shaderMaterial);
+        scene.add(mesh);
+      }
+
+      const snowSprites = [
+        "https://assets.codepen.io/3685267/snowflake1.png",
+        "https://assets.codepen.io/3685267/snowflake2.png",
+        "https://assets.codepen.io/3685267/snowflake3.png",
+        "https://assets.codepen.io/3685267/snowflake4.png",
+        "https://assets.codepen.io/3685267/snowflake5.png"
+      ];
+
+      snowSprites.forEach(sprite => {
+        createSnowSet(sprite);
+      });
+    }
+
+    function addPlane(scene, uniforms, totalPoints) {
+      const vertexShader = `
+      attribute float size;
+      attribute vec3 customColor;
+      varying vec3 vColor;
+      uniform float flash;
+      void main() {
+       vColor = customColor * mix(0.95, 1.05, flash - 0.9);
+       vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+       gl_PointSize = size * ( 300.0 / -mvPosition.z );
+       gl_Position = projectionMatrix * mvPosition;
+      }
+      `;
+
+      const fragmentShader = `
+      varying vec3 vColor;
+      void main() {
+        float dist = length(gl_PointCoord.xy - 0.5);
+        float alpha = 1.0 - smoothstep(0.4, 0.5, dist);
+        float glow = smoothstep(0.5, 0.0, dist) * 0.2;
+        gl_FragColor = vec4(vColor + glow, alpha * 0.8);
+      }
+      `;
+
+      const shaderMaterial = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader,
+        fragmentShader,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        transparent: true,
+        vertexColors: true
+      });
+
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+      const colors = [];
+      const sizes = [];
+
+      const color = new THREE.Color();
+
+      for (let i = 0; i < totalPoints; i++) {
+        const [x, y, z] = [rand(-50, 50), 0, rand(-150, 15)];
+        positions.push(x);
+        positions.push(y);
+        positions.push(z);
+
+        color.setHSL(map(i, 0, totalPoints, 0.5, 0.7), 0.9, 0.4);
+        colors.push(color.r, color.g, color.b);
+        sizes.push(1.5);
+      }
+
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3).setUsage(
+          THREE.DynamicDrawUsage));
+
+      geometry.setAttribute(
+        "customColor",
+        new THREE.Float32BufferAttribute(colors, 3));
+
+      geometry.setAttribute("size", new THREE.Float32BufferAttribute(sizes, 1));
+
+      const plane = new THREE.Points(geometry, shaderMaterial);
+      plane.position.y = -8;
+      scene.add(plane);
+    }
+
+    const map = (value, sMin, sMax, dMin, dMax) => {
+      return dMin + (value - sMin) / (sMax - sMin) * (dMax - dMin);
+    };
+
+    const rand = (max, min = 0) => min + Math.random() * (max - min);
+    const randInt = (max, min = 0) => Math.floor(min + Math.random() * (max - min));
+    const polar = (ang, r = 1) => [r * Math.cos(ang), r * Math.sin(ang)];
+    const modal = document.getElementById('start-modal');
+    const btnYes = document.getElementById('btn-yes');
+    const btnNo = document.getElementById('btn-no');
+    const textOverlay = document.getElementById('christmas-text');
+    const christmasMusic = document.getElementById('christmas-music');
+
+    btnNo.addEventListener('mouseenter', moveButton);
+    btnNo.addEventListener('click', () => {
+        alert("骗你的，其实点了也没用！🎄🎄🎄");
+    });
+
+    function moveButton() {
+        if(window.innerWidth < 768) return;
+        const x = Math.random() * 300 - 50;
+        const y = Math.random() * 200 - 50;
+        btnNo.style.transform = `translate(${x}px, ${y}px)`;
+    }
+
+    btnYes.addEventListener('click', () => {
+        modal.style.opacity = '0';
+        christmasMusic.play().catch(e => console.log("自动播放被阻止:", e));
+        
+        // 激活音效上下文
+        AudioFX.init();
+
+        setTimeout(() => {
+            modal.style.display = 'none';
+            textOverlay.classList.add('fade-in');
+        }, 1000);
+    });
+
+    window.addEventListener('resize', () => {
+      if (threeCamera) {
+        threeCamera.aspect = window.innerWidth / window.innerHeight;
+        threeCamera.updateProjectionMatrix();
+        threeRenderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+      }
+    });
+
+    window.addEventListener('load', init);
+
+    // --- MediaPipe 手势识别逻辑 ---
+    function initHandTracking() {
+      const videoElement = document.querySelector(".input_video");
+
+      function onResults(results) {
+        let newState = 'tree';
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          const landmarks = results.multiHandLandmarks[0];
+          
+          const isThumbUp = landmarks[4].y < landmarks[3].y;
+          const isIndexUp = landmarks[8].y < landmarks[6].y;
+          const isMiddleUp = landmarks[12].y < landmarks[10].y;
+          const isRingUp = landmarks[16].y < landmarks[14].y;
+          const isPinkyUp = landmarks[20].y < landmarks[18].y;
+
+          const fingersUp = [isIndexUp, isMiddleUp, isRingUp, isPinkyUp].filter(Boolean).length;
+
+          // ✋ 散开 (张开至少4根手指)
+          if (fingersUp >= 4) {
+            newState = 'explode';
+          } 
+          // ✌️ 爱心 (食指中指竖起，其他放下)
+          else if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+            newState = 'heart';
+          } 
+          // ✊ 树 (握拳或其他)
+          else {
+            newState = 'tree';
+          }
+        } else {
+          // 没检测到手，保持树形
+          newState = 'tree';
+        }
+
+        if (newState !== lastState) {
+          targetState = newState;
+          // 触发对应音效
+          if (newState === 'explode') AudioFX.playScatter();
+          if (newState === 'heart') AudioFX.playHeart();
+          if (newState === 'tree' && lastState !== 'tree') AudioFX.playTree();
+          
+          lastState = newState;
+        }
+      }
+
+      const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+      }});
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults(onResults);
+
+      const camera = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({image: videoElement});
+        },
+        width: 640,
+        height: 480
+      });
+
+      camera.start();
+    }
+  </script>
+</body>
+</html>
